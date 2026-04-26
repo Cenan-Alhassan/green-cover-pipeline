@@ -7,8 +7,6 @@ def data_folder(force_custom_data=False):
         return Path('..', 'data', 'user_data')
     return Path('..', 'data', 'westminster_data')
 
-# MAKE SURE THAT ALL FUNCTIONS CREATE THE NECESSARY FOLDERS IF NOT FOUND
-
 # 01_data_acquisition_and_preparation
 def full_core_features_folder():
     return Path(data_folder(), "01_data_acquisition_and_preparation", "full_core_features")
