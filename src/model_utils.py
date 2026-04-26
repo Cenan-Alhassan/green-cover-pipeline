@@ -321,7 +321,7 @@ def evaluate_model(model: Any, X_train: np.ndarray, y_train: np.ndarray, train_i
             "test_acc": balanced_accuracy_score(y_test, y_pred),
             "tile_results": evaluate_per_tile(model, X_train, y_train, train_ids, X_test, y_test, test_ids, tile_names),
             "confusion_matrix": confusion_matrix(y_test, y_pred),
-            "class_report": classification_report(y_test, y_pred),  # String format for text reports
+            "class_report": classification_report(y_test, y_pred, zero_division=0),  # String format for text reports
             "importances": model.feature_importances_
         }
     except Exception as e:
