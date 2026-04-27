@@ -1,6 +1,6 @@
 from pathlib import Path
 
-USING_CUSTOM_DATA = True
+USING_CUSTOM_DATA = False
 
 def data_folder(force_custom_data=False):
     if force_custom_data or USING_CUSTOM_DATA:
