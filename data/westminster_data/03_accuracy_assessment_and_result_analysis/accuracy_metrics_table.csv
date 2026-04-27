@@ -1,0 +1,5 @@
+Map,Option,Consumer accuracy,Producer accuracy,Overall (Worst case),Overall (Realistic scenario)
+Canopy Map,Tree canopy,0.8870967741935484,0.5851063829787234,0.908,0.916
+Canopy Map,Not tree,0.910958904109589,0.9827586206896551,,
+Green Cover Map,Green cover,0.9618320610687023,0.7241379310344828,0.894,0.914
+Green Cover Map,Not green,0.8699186991869918,0.9846625766871165,,

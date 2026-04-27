@@ -1,0 +1,18 @@
+Manual Classification,Modelled Classification,Status,Number of Points,Percentage
+Manmade,Neither,Match,306,61.199999999999996
+Vegetation (not Tree),Green,Match,59,11.799999999999999
+Tree,Tree,Match,55,11.0
+Unsure,Neither,Unsure,17,3.4000000000000004
+Water,Neither,Match,15,3.0
+Tree,Neither,Error,13,2.6
+Vegetation (not Tree),Neither,Error,12,2.4
+Vegetation (unsure if Tree),Neither,Unsure,4,0.8
+Vegetation (not Tree),Tree,Error,4,0.8
+Bare Ground,Green,Match,3,0.6
+Unsure,Green,Unsure,2,0.4
+Manmade,Green,Error,2,0.4
+Bare Ground,Neither,Error,2,0.4
+Vegetation (unsure if Tree),Tree,Unsure,2,0.4
+Vegetation (unsure if Tree),Green,Unsure,2,0.4
+Tree,Green,Error,1,0.2
+Unsure,Tree,Unsure,1,0.2
