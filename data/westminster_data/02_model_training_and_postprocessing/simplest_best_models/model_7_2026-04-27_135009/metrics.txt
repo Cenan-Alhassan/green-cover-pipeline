@@ -1,0 +1,60 @@
+==============================
+ MODEL 7 PERFORMANCE REPORT
+==============================
+
+Parameters: {'n_estimators': 36, 'min_samples_leaf': 92, 'max_samples': 0.6599999999999999, 'max_features': 17, 'max_depth': 15}
+
+--- Global Accuracies ---
+Training Balanced Acc: 0.9398
+Testing Balanced Acc:  0.8821
+Generalization Gap:    0.0576
+
+--- Per-Tile Accuracy ---
+--- tile-1_fstack ---
+Training Accuracy: 0.8810
+Testing Accuracy: 0.7999
+Generalization Gap: 0.0810
+--- tile-2_fstack ---
+Training Accuracy: 0.9500
+Testing Accuracy: 0.9372
+Generalization Gap: 0.0127
+--- tile-3_fstack ---
+Training Accuracy: 0.8788
+Testing Accuracy: 0.8277
+Generalization Gap: 0.0510
+--- tile-4_fstack ---
+Training Accuracy: 0.8892
+Testing Accuracy: 0.5924
+Generalization Gap: 0.2969
+--- tile-5_fstack ---
+Training Accuracy: 0.8548
+Testing Accuracy: 0.8592
+Generalization Gap: -0.0044
+
+--- Confusion Matrix ---
+[[13846  1167  1413]
+ [ 1051 15659    73]
+ [  847  2740 24104]]
+
+--- Detailed Classification Report ---
+              precision    recall  f1-score   support
+
+         1.0       0.88      0.84      0.86     16426
+         2.0       0.80      0.93      0.86     16783
+         3.0       0.94      0.87      0.90     27691
+
+    accuracy                           0.88     60900
+   macro avg       0.87      0.88      0.88     60900
+weighted avg       0.89      0.88      0.88     60900
+
+--- Top 10 Feature Importances ---
+1. f22: 0.1472
+2. f30: 0.1344
+3. f28: 0.1270
+4. f15: 0.0917
+5. f25: 0.0742
+6. f26: 0.0600
+7. f44: 0.0552
+8. f21: 0.0520
+9. f10: 0.0402
+10. f23: 0.0257

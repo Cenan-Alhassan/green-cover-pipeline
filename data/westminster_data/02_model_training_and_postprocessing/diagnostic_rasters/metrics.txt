@@ -1,0 +1,60 @@
+==============================
+ MODEL PERFORMANCE REPORT
+==============================
+
+Parameters: {'bootstrap': True, 'ccp_alpha': 0.0, 'class_weight': 'balanced', 'criterion': 'gini', 'max_depth': 17, 'max_features': 11, 'max_leaf_nodes': None, 'max_samples': 0.91, 'min_impurity_decrease': 0.0, 'min_samples_leaf': 56, 'min_samples_split': 2, 'min_weight_fraction_leaf': 0.0, 'monotonic_cst': None, 'n_estimators': 86, 'n_jobs': -1, 'oob_score': False, 'random_state': 42, 'verbose': 0, 'warm_start': False}
+
+--- Global Accuracies ---
+Training Balanced Acc: 0.9500
+Testing Balanced Acc:  0.8832
+Generalization Gap:    0.0668
+
+--- Per-Tile Accuracy ---
+--- tile-1_fstack ---
+Training Accuracy: 0.8996
+Testing Accuracy: 0.8008
+Generalization Gap: 0.0987
+--- tile-2_fstack ---
+Training Accuracy: 0.9609
+Testing Accuracy: 0.9375
+Generalization Gap: 0.0234
+--- tile-3_fstack ---
+Training Accuracy: 0.8967
+Testing Accuracy: 0.8272
+Generalization Gap: 0.0695
+--- tile-4_fstack ---
+Training Accuracy: 0.9089
+Testing Accuracy: 0.5928
+Generalization Gap: 0.3161
+--- tile-5_fstack ---
+Training Accuracy: 0.8779
+Testing Accuracy: 0.8653
+Generalization Gap: 0.0126
+
+--- Confusion Matrix ---
+[[13854  1205  1367]
+ [ 1042 15679    62]
+ [  842  2703 24146]]
+
+--- Detailed Classification Report ---
+              precision    recall  f1-score   support
+
+         1.0       0.88      0.84      0.86     16426
+         2.0       0.80      0.93      0.86     16783
+         3.0       0.94      0.87      0.91     27691
+
+    accuracy                           0.88     60900
+   macro avg       0.87      0.88      0.88     60900
+weighted avg       0.89      0.88      0.88     60900
+
+--- Top 10 Feature Importances ---
+1. f22: 0.1053
+2. f30: 0.1003
+3. f28: 0.0775
+4. f25: 0.0723
+5. f44: 0.0703
+6. f15: 0.0693
+7. f26: 0.0660
+8. f21: 0.0544
+9. f10: 0.0408
+10. f17: 0.0369
