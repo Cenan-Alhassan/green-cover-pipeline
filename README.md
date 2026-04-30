@@ -41,6 +41,7 @@ While the notebooks provide overviews of essential topics and links to outside r
 The user must also have access to a GIS software, such as QGIS, and be familiar with the basics of GIS Processing Functions.
 
 <br>
+
 * **Note:** for those reading the notebooks on the GitHub page, the embedded images may not render correctly due to GitHub's limitations on HTML styling, such as appearing off-center.
 
 # Core Technical Stack
