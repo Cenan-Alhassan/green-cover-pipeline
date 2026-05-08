@@ -2,18 +2,19 @@
 DEFAULT_KERNEL_SIZE = 3
 
 # Standard Libraries
-import os
 import logging
-from typing import Any, Tuple, Union
+import os
+from typing import Any
+
+import cv2
+import geopandas as gpd
 
 # Scientific Computing and Image Processing
 import numpy as np
-import cv2
 
 # Geospatial Libraries
 import rasterio
 from rasterio.features import shapes
-import geopandas as gpd
 from shapely.geometry import shape
 
 # Setup logging
@@ -23,7 +24,10 @@ logger = logging.getLogger(__name__)
 # 1. MORPHOLOGICAL SMOOTHING
 # =====================================================================
 
-def apply_morphological_smoothing(input_path: str, output_path: str, kernel_size: int = DEFAULT_KERNEL_SIZE) -> None:
+
+def apply_morphological_smoothing(
+    input_path: str, output_path: str, kernel_size: int = DEFAULT_KERNEL_SIZE
+) -> None:
     """
     Cleans classification noise by removing 'lonely' pixels and filling small holes.
     Uses a hierarchical approach: smooths total vegetation footprint first,
@@ -50,7 +54,9 @@ def apply_morphological_smoothing(input_path: str, output_path: str, kernel_size
 
         # 4. Smooth Total Vegetation Footprint (Classes 1 & 2)
         # This acts as a 'safe zone' to prevent holes in parks.
-        veg_mask = np.where((classification_raster == 1) | (classification_raster == 2), 255, 0).astype(np.uint8)
+        veg_mask = np.where(
+            (classification_raster == 1) | (classification_raster == 2), 255, 0
+        ).astype(np.uint8)
         smoothed_footprint = cv2.morphologyEx(veg_mask, cv2.MORPH_OPEN, kernel)
 
         # 5. Smooth Canopy (Class 1) independently
@@ -78,11 +84,19 @@ def apply_morphological_smoothing(input_path: str, output_path: str, kernel_size
     except Exception as e:
         logger.error(f"Error during morphological smoothing: {e}")
 
+
 # =====================================================================
 # 2. VECTORIZATION HELPERS
 # =====================================================================
 
-def extract_to_gdf(image: np.ndarray, target_classes: Union[int, Tuple[int, ...]], transform: Any, crs: Any, mask_all: np.ndarray) -> Union[gpd.GeoDataFrame, None]:
+
+def extract_to_gdf(
+    image: np.ndarray,
+    target_classes: int | tuple[int, ...],
+    transform: Any,
+    crs: Any,
+    mask_all: np.ndarray,
+) -> gpd.GeoDataFrame | None:
     """
     Internal helper to convert pixel clusters into a GeoDataFrame.
 
@@ -99,14 +113,14 @@ def extract_to_gdf(image: np.ndarray, target_classes: Union[int, Tuple[int, ...]
         if isinstance(target_classes, tuple):
             class_mask = np.isin(image, target_classes)
         else:
-            class_mask = (image == target_classes)
+            class_mask = image == target_classes
 
         # 2. Ensure we don't vectorize NoData areas
         final_mask = class_mask & (mask_all > 0)
 
         # 3. Extract polygons
         results = (
-            {'properties': {'class_id': str(target_classes)}, 'geometry': shape(geom)}
+            {"properties": {"class_id": str(target_classes)}, "geometry": shape(geom)}
             for geom, val in shapes(image, mask=final_mask, transform=transform)
         )
 
@@ -120,9 +134,11 @@ def extract_to_gdf(image: np.ndarray, target_classes: Union[int, Tuple[int, ...]
         logger.error(f"Error during vectorization: {e}")
         return None
 
+
 # =====================================================================
 # 3. VECTORIZATION MAIN FUNCTION
 # =====================================================================
+
 
 def vectorise_raster(input_path: str, output_canopy: str, output_green: str) -> None:
     """

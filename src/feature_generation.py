@@ -5,26 +5,26 @@ DEFAULT_BUFFER_PX = 30
 GLCM_LEVELS = 32
 
 # Standard Libraries
-import os
 import logging
+import os
 import pickle
 from pathlib import Path
-from typing import List, Tuple, Any, Dict, Union
+
+import cv2
 
 # Scientific Computing and Image Processing
 import numpy as np
-import cv2
 
 # Geospatial Libraries
 import rasterio
 from rasterio.windows import from_bounds
+from scipy.ndimage import median_filter, minimum_filter
 
 # Scikit-Image and SciPy
 from skimage.feature import graycomatrix, graycoprops
-from skimage.util import view_as_windows
 from skimage.filters.rank import entropy, minimum
 from skimage.morphology import disk
-from scipy.ndimage import median_filter, minimum_filter
+from skimage.util import view_as_windows
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -36,8 +36,14 @@ logger = logging.getLogger(__name__)
 # The function must take a tile and a list of raster paths
 # loops through all core features. Returns a list of metadata and rasters
 
+
 # TO DO: create checks for file existence
-def clip_rasters_by_tiles(core_features: List[str], tiles: List[Path], outputs: List[Path], buffer_px: int = DEFAULT_BUFFER_PX) -> None:
+def clip_rasters_by_tiles(
+    core_features: list[str],
+    tiles: list[Path],
+    outputs: list[Path],
+    buffer_px: int = DEFAULT_BUFFER_PX,
+) -> None:
     """
     Clips multiple core feature rasters to the extent of a labelled tile + a buffer.
     Returns lists containing the clipped rasters and their metadata. #WRONG
@@ -62,7 +68,7 @@ def clip_rasters_by_tiles(core_features: List[str], tiles: List[Path], outputs: 
                 tile_bounds.left - (buffer_px * res),
                 tile_bounds.bottom - (buffer_px * res),
                 tile_bounds.right + (buffer_px * res),
-                tile_bounds.top + (buffer_px * res)
+                tile_bounds.top + (buffer_px * res),
             )
 
             clipped_rasters_list = []
@@ -79,12 +85,14 @@ def clip_rasters_by_tiles(core_features: List[str], tiles: List[Path], outputs: 
 
                     # Update metadata for the new small file
                     metadata = src.meta.copy()
-                    metadata.update({
-                        "driver": "GTiff",
-                        "height": window.height,
-                        "width": window.width,
-                        "transform": src.window_transform(window)
-                    })
+                    metadata.update(
+                        {
+                            "driver": "GTiff",
+                            "height": window.height,
+                            "width": window.width,
+                            "transform": src.window_transform(window),
+                        }
+                    )
 
                     clipped_rasters_list.append(data)
                     metadata_list.append(metadata)
@@ -93,7 +101,9 @@ def clip_rasters_by_tiles(core_features: List[str], tiles: List[Path], outputs: 
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
 
-            for path, raster, metadata in zip(core_features, clipped_rasters_list, metadata_list):
+            for path, raster, metadata in zip(
+                core_features, clipped_rasters_list, metadata_list
+            ):
                 file_name = os.path.basename(path)
                 output = os.path.join(output_path, f"{file_name}")
 
@@ -105,11 +115,15 @@ def clip_rasters_by_tiles(core_features: List[str], tiles: List[Path], outputs: 
         logger.error(f"Error clipping rasters: {e}")
         raise
 
+
 # =====================================================================
 # 2. TEXTURE CALCULATION HELPERS
 # =====================================================================
 
-def calculate_glcm_map(image: np.ndarray, prop: str, window_size: int, dist: int) -> np.ndarray:
+
+def calculate_glcm_map(
+    image: np.ndarray, prop: str, window_size: int, dist: int
+) -> np.ndarray:
     """
     Generates a texture map by applying GLCM to a sliding window.
 
@@ -122,7 +136,9 @@ def calculate_glcm_map(image: np.ndarray, prop: str, window_size: int, dist: int
     try:
         # 1. Quantize the image to fewer levels to speed up calculation (0-31)
         img_min, img_max = image.min(), image.max()
-        img_quantized = (((image - img_min) / (img_max - img_min + 1e-6)) * (GLCM_LEVELS - 1)).astype(np.uint8)
+        img_quantized = (
+            ((image - img_min) / (img_max - img_min + 1e-6)) * (GLCM_LEVELS - 1)
+        ).astype(np.uint8)
 
         # 2. Create sliding windows (patches)
         # The image here is still the 'buffered' version (e.g., 270x270)
@@ -137,7 +153,14 @@ def calculate_glcm_map(image: np.ndarray, prop: str, window_size: int, dist: int
         for i in range(h):
             for j in range(w):
                 patch = patches[i, j]
-                glcm = graycomatrix(patch, distances=[dist], angles=[0], levels=GLCM_LEVELS, symmetric=True, normed=True)
+                glcm = graycomatrix(
+                    patch,
+                    distances=[dist],
+                    angles=[0],
+                    levels=GLCM_LEVELS,
+                    symmetric=True,
+                    normed=True,
+                )
                 texture_map[i, j] = graycoprops(glcm, prop)[0, 0]
 
         # 5. Calculate padding to match the original input shape (e.g., 270x270)
@@ -151,17 +174,29 @@ def calculate_glcm_map(image: np.ndarray, prop: str, window_size: int, dist: int
         pad_w_before = pad_total_w // 2
         pad_w_after = pad_total_w - pad_w_before
 
-        return np.pad(texture_map, ((pad_h_before, pad_h_after), (pad_w_before, pad_w_after)), mode='edge')
+        return np.pad(
+            texture_map,
+            ((pad_h_before, pad_h_after), (pad_w_before, pad_w_after)),
+            mode="edge",
+        )
     except Exception as e:
         logger.error(f"Error calculating GLCM map: {e}")
         return np.zeros_like(image, dtype=np.float32)
+
 
 # =====================================================================
 # 3. FEATURE STACK GENERATION
 # =====================================================================
 
-#def generate_features(clipped_buffered_rasters, tile_path, buffer_px=30):
-def generate_features(tiled_core_features: str, core_features: List[str], tiles: List[Path], outputs: List[Path], buffer_px: int = DEFAULT_BUFFER_PX) -> None:
+
+# def generate_features(clipped_buffered_rasters, tile_path, buffer_px=30):
+def generate_features(
+    tiled_core_features: str,
+    core_features: list[str],
+    tiles: list[Path],
+    outputs: list[Path],
+    buffer_px: int = DEFAULT_BUFFER_PX,
+) -> None:
     """
     Calculates features from Appendix 2 (excludes features 4 & 5, includes feature 44)
     Inputs:
@@ -179,7 +214,10 @@ def generate_features(tiled_core_features: str, core_features: List[str], tiles:
             # 1. Unpack rasters
 
             # for each tile, raw_tiled_rasters is a list of paths, each: feature stacks + current tile + loop through features
-            raw_tiled_rasters = [Path(tiled_core_features, tile_path.stem, feature) for feature in core_features]
+            raw_tiled_rasters = [
+                Path(tiled_core_features, tile_path.stem, feature)
+                for feature in core_features
+            ]
 
             tiled_rasters = []
             for raw_raster_path in raw_tiled_rasters:
@@ -257,8 +295,13 @@ def generate_features(tiled_core_features: str, core_features: List[str], tiles:
 
             # (Feature 23) Function of max height change in disk(2) footprint of the height above ground
             # Uses a circular neighborhood to find local height variability
-            f23 = cv2.dilate(f22.astype(np.float32), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))) - \
-                cv2.erode(f22.astype(np.float32), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
+            f23 = cv2.dilate(
+                f22.astype(np.float32),
+                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)),
+            ) - cv2.erode(
+                f22.astype(np.float32),
+                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)),
+            )
 
             # (Feature 24) Entropy of NDVI using disk(5) footprint
             # Note: entropy requires skimage.filters.rank, which typically uses uint8
@@ -294,19 +337,19 @@ def generate_features(tiled_core_features: str, core_features: List[str], tiles:
             f33 = median_filter(f7, size=5)
 
             # (Feature 34) GLCM Dissimilarity for NIR, 25x25 patch, dist 2
-            f34 = calculate_glcm_map(f6, 'dissimilarity', 25, 2)
+            f34 = calculate_glcm_map(f6, "dissimilarity", 25, 2)
 
             # (Feature 35) GLCM Dissimilarity for NIR, 10x10 patch, dist 1
-            f35 = calculate_glcm_map(f6, 'dissimilarity', 10, 1)
+            f35 = calculate_glcm_map(f6, "dissimilarity", 10, 1)
 
             # (Feature 36) GLCM Correlation for NIR, 25x25 patch, dist 2
-            f36 = calculate_glcm_map(f6, 'correlation', 25, 2)
+            f36 = calculate_glcm_map(f6, "correlation", 25, 2)
 
             # (Feature 37) GLCM Correlation for NDVI, 25x25 patch, dist 2
-            f37 = calculate_glcm_map(f15, 'correlation', 25, 2)
+            f37 = calculate_glcm_map(f15, "correlation", 25, 2)
 
             # (Feature 38) GLCM Dissimilarity for NDVI, 25x25 patch, dist 2
-            f38 = calculate_glcm_map(f15, 'dissimilarity', 25, 2)
+            f38 = calculate_glcm_map(f15, "dissimilarity", 25, 2)
 
             # (Feature 39) Min of GLCM Dissimilarity for NDVI, 10x10 patch, dist 2
             # We apply a minimum filter to the texture map generated above
@@ -328,12 +371,50 @@ def generate_features(tiled_core_features: str, core_features: List[str], tiles:
             # We now crop all features from the buffered size (e.g., 270x270)
             # back to the label size (210x210) by removing the 30px buffer on all sides.
 
-            features = [f1, f2, f3, f6, f7, f8, f9, f10,
-                        f11, f12, f13, f14, f15, f16, f17, f18, f19, f20,
-                        f21, f22, f23, f24, f25, f26, f27, f28, f29, f30,
-                        f31, f32, f33, f34, f35, f36, f37, f38, f39, f40,
-                        f41, f42, f43, f44]
-
+            features = [
+                f1,
+                f2,
+                f3,
+                f6,
+                f7,
+                f8,
+                f9,
+                f10,
+                f11,
+                f12,
+                f13,
+                f14,
+                f15,
+                f16,
+                f17,
+                f18,
+                f19,
+                f20,
+                f21,
+                f22,
+                f23,
+                f24,
+                f25,
+                f26,
+                f27,
+                f28,
+                f29,
+                f30,
+                f31,
+                f32,
+                f33,
+                f34,
+                f35,
+                f36,
+                f37,
+                f38,
+                f39,
+                f40,
+                f41,
+                f42,
+                f43,
+                f44,
+            ]
 
             # We first stack all the features together
             feature_stack = np.stack(features)
@@ -359,13 +440,10 @@ def generate_features(tiled_core_features: str, core_features: List[str], tiles:
             # 5. Save the feature stack and metadata
             np.save(output_path, final_stack)
 
-            tile_meta.update({
-                "count": final_stack.shape[0],
-                "dtype": 'float32'
-            })
+            tile_meta.update({"count": final_stack.shape[0], "dtype": "float32"})
 
-            meta_output_path = output_path.with_suffix('.pkl')
-            with open(meta_output_path, 'wb') as f:
+            meta_output_path = output_path.with_suffix(".pkl")
+            with open(meta_output_path, "wb") as f:
                 pickle.dump(tile_meta, f)
 
             print(f"Feature stack saved to {output_path}")

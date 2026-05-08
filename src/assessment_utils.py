@@ -1,23 +1,23 @@
 # Standard Libraries
-import os
-import math
 import logging
-from typing import Dict, List, Optional, Any, Tuple, Union
+import math
+import os
+from typing import Any
+
+# Geospatial Libraries
+import geopandas as gpd
+
+# Visualization Libraries
+import matplotlib.pyplot as plt
 
 # Scientific Computing and Data Analysis
 import numpy as np
 import pandas as pd
-from sklearn.metrics import precision_score, recall_score, accuracy_score
-
-# Geospatial Libraries
-import geopandas as gpd
 import rasterio
-from rasterio.windows import Window
 from rasterio.mask import mask
+from rasterio.windows import Window
 from shapely.geometry import box
-
-# Visualization Libraries
-import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score, precision_score, recall_score
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -26,12 +26,13 @@ logger = logging.getLogger(__name__)
 # 1. SPATIAL JOIN AND SAMPLING UTILITIES
 # =====================================================================
 
+
 def sample_vectors_to_points(
-        points_path: str,
-        canopy_vector_file: str,
-        green_vector_file: str,
-        samples_column: str = 'model_prediction',
-        output_path: Optional[str] = None
+    points_path: str,
+    canopy_vector_file: str,
+    green_vector_file: str,
+    samples_column: str = "model_prediction",
+    output_path: str | None = None,
 ) -> gpd.GeoDataFrame:
     """
     Spatially joins ground truth points with predicted vector polygons.
@@ -56,7 +57,7 @@ def sample_vectors_to_points(
         points[samples_column] = 3
 
         # Store original index to ensure we map joined data back correctly
-        points['orig_id'] = points.index
+        points["orig_id"] = points.index
 
         # 2. Process Green Cover (Class 2)
         if os.path.exists(green_vector_file):
@@ -67,10 +68,12 @@ def sample_vectors_to_points(
                 points = points.to_crs(green_gdf.crs)
 
             # Spatial Join: Points intersecting Green polygons
-            joined_green = gpd.sjoin(points, green_gdf, how='inner', predicate='intersects')
+            joined_green = gpd.sjoin(
+                points, green_gdf, how="inner", predicate="intersects"
+            )
 
             # Update points that were found inside green polygons
-            points.loc[joined_green['orig_id'], samples_column] = 2
+            points.loc[joined_green["orig_id"], samples_column] = 2
         else:
             print(f"Warning: Green vector not found at {green_vector_file}")
 
@@ -82,10 +85,12 @@ def sample_vectors_to_points(
                 points = points.to_crs(canopy_gdf.crs)
 
             # Spatial Join: Points intersecting Canopy polygons
-            joined_canopy = gpd.sjoin(points, canopy_gdf, how='inner', predicate='intersects')
+            joined_canopy = gpd.sjoin(
+                points, canopy_gdf, how="inner", predicate="intersects"
+            )
 
             # Update points. This naturally overrides 2 (Green) with 1 (Canopy)
-            points.loc[joined_canopy['orig_id'], samples_column] = 1
+            points.loc[joined_canopy["orig_id"], samples_column] = 1
         else:
             print(f"Warning: Canopy vector not found at {canopy_vector_file}")
 
@@ -97,20 +102,29 @@ def sample_vectors_to_points(
                 os.makedirs(output_dir, exist_ok=True)
 
             # Save as GeoPackage
-            points.to_file(output_path, driver='GPKG')
+            points.to_file(output_path, driver="GPKG")
             print(f"Sampled points successfully saved to: {output_path}")
 
         # Drop the temporary ID and return
-        return points.drop(columns=['orig_id'])
+        return points.drop(columns=["orig_id"])
     except Exception as e:
         logger.error(f"Error sampling vectors to points: {e}")
         raise
+
 
 # =====================================================================
 # 2. DATA GENERATION (Saveable to CSV)
 # =====================================================================
 
-def get_confusion_matrix_csv(points_df: pd.DataFrame, label_column: str, pred_column: str, manual_names: Dict[int, str], model_names: Dict[int, str], unsure_labels: List[int]) -> pd.DataFrame:
+
+def get_confusion_matrix_csv(
+    points_df: pd.DataFrame,
+    label_column: str,
+    pred_column: str,
+    manual_names: dict[int, str],
+    model_names: dict[int, str],
+    unsure_labels: list[int],
+) -> pd.DataFrame:
     """
     Processes spatial join results into a raw summary table.
     Returns a standard Pandas DataFrame (perfect for .to_csv()).
@@ -127,8 +141,8 @@ def get_confusion_matrix_csv(points_df: pd.DataFrame, label_column: str, pred_co
         df = points_df.copy()
 
         # 1. Map IDs to Names
-        df['Manual Classification'] = df[label_column].map(manual_names)
-        df['Modelled Classification'] = df[pred_column].map(model_names)
+        df["Manual Classification"] = df[label_column].map(manual_names)
+        df["Modelled Classification"] = df[pred_column].map(model_names)
 
         # 2. Determine Status (Match, Unsure, or Error)
         def determine_status(row):
@@ -136,35 +150,45 @@ def get_confusion_matrix_csv(points_df: pd.DataFrame, label_column: str, pred_co
             p_id = row[pred_column]
 
             if m_id in unsure_labels:
-                return 'Unsure'
+                return "Unsure"
 
             # Match logic based on Westminster rules
-            if p_id == 3 and m_id in [4, 6]: return 'Match'  # Non-green vs Manmade/Water
-            if p_id == 2 and m_id in [1, 2]: return 'Match'  # Green cover vs Veg/Bare Ground
-            if p_id == 1 and m_id == 0:      return 'Match'  # Tree canopy vs Tree
+            if p_id == 3 and m_id in [4, 6]:
+                return "Match"  # Non-green vs Manmade/Water
+            if p_id == 2 and m_id in [1, 2]:
+                return "Match"  # Green cover vs Veg/Bare Ground
+            if p_id == 1 and m_id == 0:
+                return "Match"  # Tree canopy vs Tree
 
-            return 'Error'
+            return "Error"
 
-        df['Status'] = df.apply(determine_status, axis=1)
+        df["Status"] = df.apply(determine_status, axis=1)
 
         # 3. Grouping and Calculations
-        table = df.groupby(['Manual Classification', 'Modelled Classification', 'Status']).size().reset_index(
-            name='Number of Points')
+        table = (
+            df.groupby(["Manual Classification", "Modelled Classification", "Status"])
+            .size()
+            .reset_index(name="Number of Points")
+        )
 
         # 4. Calculate Percentage
-        table['Percentage'] = (table['Number of Points'] / len(df) * 100)
+        table["Percentage"] = table["Number of Points"] / len(df) * 100
 
         # 5. SORTING: Order based on highest frequency descending
-        table = table.sort_values(by='Number of Points', ascending=False).reset_index(drop=True)
+        table = table.sort_values(by="Number of Points", ascending=False).reset_index(
+            drop=True
+        )
 
         return table
     except Exception as e:
         logger.error(f"Error calculating confusion matrix CSV: {e}")
         raise
 
+
 # =====================================================================
 # 3. VISUAL STYLING (For Notebook Display)
 # =====================================================================
+
 
 def style_confusion_matrix(df: pd.DataFrame) -> Any:
     """
@@ -175,28 +199,38 @@ def style_confusion_matrix(df: pd.DataFrame) -> Any:
         df: DataFrame containing the confusion matrix data.
     """
     try:
+
         def gla_styling(row):
             colors = {
-                'Match': 'background-color: #c6efce',  # Green
-                'Unsure': 'background-color: #ffeb9c',  # Yellow
-                'Error': 'background-color: #ffc7ce'  # Red
+                "Match": "background-color: #c6efce",  # Green
+                "Unsure": "background-color: #ffeb9c",  # Yellow
+                "Error": "background-color: #ffc7ce",  # Red
             }
-            return [colors.get(row['Status'], '')] * len(row)
+            return [colors.get(row["Status"], "")] * len(row)
 
         styler = (
-            df.style
-                .apply(gla_styling, axis=1)
-                .format({'Percentage': '{:.1f}'})  # 1 decimal place
-                .set_properties(**{
-                'border': '1px solid black',  # Adds grid lines
-                'text-align': 'center'
-            })
-                .set_table_styles([
-                # Ensures headers have black borders to match the GLA report style
-                {'selector': 'th', 'props': [('border', '1px solid black'), ('background-color', '#f2f2f2')]}
-            ])
-                .hide(axis='index')
-                .set_table_attributes('style="margin-left: auto; margin-right: auto;"')
+            df.style.apply(gla_styling, axis=1)
+            .format({"Percentage": "{:.1f}"})  # 1 decimal place
+            .set_properties(
+                **{
+                    "border": "1px solid black",  # Adds grid lines
+                    "text-align": "center",
+                }
+            )
+            .set_table_styles(
+                [
+                    # Ensures headers have black borders to match the GLA report style
+                    {
+                        "selector": "th",
+                        "props": [
+                            ("border", "1px solid black"),
+                            ("background-color", "#f2f2f2"),
+                        ],
+                    }
+                ]
+            )
+            .hide(axis="index")
+            .set_table_attributes('style="margin-left: auto; margin-right: auto;"')
         )
 
         return styler
@@ -204,11 +238,15 @@ def style_confusion_matrix(df: pd.DataFrame) -> Any:
         logger.error(f"Error styling confusion matrix: {e}")
         return df
 
+
 # =====================================================================
 # 4. ACCURRACY METRICS FUNCTIONS
 # =====================================================================
 
-def get_accuracy_metrics_csv(points_df: pd.DataFrame, label_column: str, pred_column: str, config: Dict[str, Any]) -> pd.DataFrame:
+
+def get_accuracy_metrics_csv(
+    points_df: pd.DataFrame, label_column: str, pred_column: str, config: dict[str, Any]
+) -> pd.DataFrame:
     """
     Calculates metrics for Table 2, ensuring GLA's strict 'Worst Case' forced errors.
 
@@ -225,11 +263,11 @@ def get_accuracy_metrics_csv(points_df: pd.DataFrame, label_column: str, pred_co
 
         for map_name, rules in config.items():
             # 1. Base Binary Masks
-            y_true = df[label_column].isin(rules['Manual Positives']).astype(int)
-            y_pred = df[pred_column].isin(rules['Model Positives']).astype(int)
+            y_true = df[label_column].isin(rules["Manual Positives"]).astype(int)
+            y_pred = df[pred_column].isin(rules["Model Positives"]).astype(int)
 
             # 2. THE FIX: Force Errors for Worst Case Scenario
-            error_mask = df[label_column].isin(rules['Forced Error Labels'])
+            error_mask = df[label_column].isin(rules["Forced Error Labels"])
             y_true.loc[error_mask] = 1 - y_pred.loc[error_mask]
 
             # 3. Calculate Class Metrics (Precision/Recall)
@@ -245,25 +283,36 @@ def get_accuracy_metrics_csv(points_df: pd.DataFrame, label_column: str, pred_co
             base_correct_mask = ~error_mask & (y_true == y_pred)
             base_correct_count = base_correct_mask.sum()
 
-            adj_points = len(df[df[label_column] == rules['Adjustment Label']])
+            adj_points = len(df[df[label_column] == rules["Adjustment Label"]])
             overall_real = (base_correct_count + (0.5 * adj_points)) / total_points
 
             # 6. Build the rows
-            data.append({
-                'Map': map_name, 'Option': rules['Positive Option'],
-                'Consumer accuracy': pos_cons, 'Producer accuracy': pos_prod,
-                'Overall (Worst case)': overall_worst, 'Overall (Realistic scenario)': overall_real
-            })
-            data.append({
-                'Map': map_name, 'Option': rules['Negative Option'],
-                'Consumer accuracy': neg_cons, 'Producer accuracy': neg_prod,
-                'Overall (Worst case)': None, 'Overall (Realistic scenario)': None
-            })
+            data.append(
+                {
+                    "Map": map_name,
+                    "Option": rules["Positive Option"],
+                    "Consumer accuracy": pos_cons,
+                    "Producer accuracy": pos_prod,
+                    "Overall (Worst case)": overall_worst,
+                    "Overall (Realistic scenario)": overall_real,
+                }
+            )
+            data.append(
+                {
+                    "Map": map_name,
+                    "Option": rules["Negative Option"],
+                    "Consumer accuracy": neg_cons,
+                    "Producer accuracy": neg_prod,
+                    "Overall (Worst case)": None,
+                    "Overall (Realistic scenario)": None,
+                }
+            )
 
         return pd.DataFrame(data)
     except Exception as e:
         logger.error(f"Error calculating accuracy metrics CSV: {e}")
         raise
+
 
 def style_accuracy_metrics(df: pd.DataFrame) -> Any:
     """
@@ -275,35 +324,41 @@ def style_accuracy_metrics(df: pd.DataFrame) -> Any:
     try:
         # 1. Formatting dictionary
         format_dict = {
-            'Consumer accuracy': '{:.0%}',
-            'Producer accuracy': '{:.0%}',
-            'Overall (Worst case)': '{:.0%}',
-            'Overall (Realistic scenario)': '{:.0%}'
+            "Consumer accuracy": "{:.0%}",
+            "Producer accuracy": "{:.0%}",
+            "Overall (Worst case)": "{:.0%}",
+            "Overall (Realistic scenario)": "{:.0%}",
         }
 
         # 2. Set the MultiIndex for the 'spanning' effect
-        display_df = df.set_index(['Map', 'Option'])
+        display_df = df.set_index(["Map", "Option"])
         display_df.index.names = [None, None]
 
         styler = (
-            display_df.style
-            .format(format_dict, na_rep='')
-            .set_properties(**{
-                'border': '1px solid black',
-                'text-align': 'center'
-            })
+            display_df.style.format(format_dict, na_rep="")
+            .set_properties(**{"border": "1px solid black", "text-align": "center"})
             # Bold the realistic scenario column
-            .set_properties(subset=['Overall (Realistic scenario)'], **{'font-weight': 'bold'})
-            .set_table_styles([
-                # Targets the empty top-left corners and headers
-                {'selector': 'th', 'props': [
-                    ('border', '1px solid black'),
-                    ('background-color', '#f2f2f2'),
-                    ('vertical-align', 'middle'),
-                    ('text-align', 'center')
-                ]},
-                {'selector': 'th.row_heading', 'props': [('text-align', 'left'), ('font-weight', 'bold')]}
-            ])
+            .set_properties(
+                subset=["Overall (Realistic scenario)"], **{"font-weight": "bold"}
+            )
+            .set_table_styles(
+                [
+                    # Targets the empty top-left corners and headers
+                    {
+                        "selector": "th",
+                        "props": [
+                            ("border", "1px solid black"),
+                            ("background-color", "#f2f2f2"),
+                            ("vertical-align", "middle"),
+                            ("text-align", "center"),
+                        ],
+                    },
+                    {
+                        "selector": "th.row_heading",
+                        "props": [("text-align", "left"), ("font-weight", "bold")],
+                    },
+                ]
+            )
             .set_table_attributes('style="margin-left: auto; margin-right: auto;"')
         )
 
@@ -312,11 +367,15 @@ def style_accuracy_metrics(df: pd.DataFrame) -> Any:
         logger.error(f"Error styling accuracy metrics: {e}")
         return df
 
+
 # =====================================================================
 # 5. DYNAMIC WINDOW CALCULATOR
 # =====================================================================
 
-def get_spatial_test_window(tile_height: int, tile_width: int, train_ratio: float = 0.7, test_gap_px: int = 5) -> Window:
+
+def get_spatial_test_window(
+    tile_height: int, tile_width: int, train_ratio: float = 0.7, test_gap_px: int = 5
+) -> Window:
     """
     Calculates the exact rasterio Window for the testing set.
 
@@ -329,24 +388,32 @@ def get_spatial_test_window(tile_height: int, tile_width: int, train_ratio: floa
     try:
         # 1. Calculate the end of the training rows
         train_end_row = int(tile_height * train_ratio)
-        
+
         # 2. Calculate the start of the test rows after the gap
         test_start_row = train_end_row + test_gap_px
         test_height = tile_height - test_start_row
 
-        print(f"Returned Rasterio object: Window({0}, {test_start_row}, {tile_width}, {test_height}) ")
+        print(
+            f"Returned Rasterio object: Window({0}, {test_start_row}, {tile_width}, {test_height}) "
+        )
 
         # 3. Return the Rasterio Window
-        return Window(col_off=0, row_off=test_start_row, width=tile_width, height=test_height)
+        return Window(
+            col_off=0, row_off=test_start_row, width=tile_width, height=test_height
+        )
     except Exception as e:
         logger.error(f"Error calculating spatial test window: {e}")
         raise
+
 
 # =====================================================================
 # 6. FINAL COVER & ERROR ANALYSIS (Vector Based)
 # =====================================================================
 
-def _compute_vector_cover_percentage(vector_gdf: gpd.GeoDataFrame, boundary_gdf: gpd.GeoDataFrame) -> float:
+
+def _compute_vector_cover_percentage(
+    vector_gdf: gpd.GeoDataFrame, boundary_gdf: gpd.GeoDataFrame
+) -> float:
     """Internally calculates the base % cover of a vector within a geographic boundary."""
     try:
         vector_gdf = vector_gdf.to_crs(boundary_gdf.crs)
@@ -360,7 +427,13 @@ def _compute_vector_cover_percentage(vector_gdf: gpd.GeoDataFrame, boundary_gdf:
         logger.error(f"Error computing vector cover percentage: {e}")
         return 0.0
 
-def _get_vector_vs_raster_errors(vector_gdf: gpd.GeoDataFrame, labelled_tiles: List[str], target_raster_vals: List[int], testing_window: Optional[Window] = None) -> Tuple[np.ndarray, np.ndarray]:
+
+def _get_vector_vs_raster_errors(
+    vector_gdf: gpd.GeoDataFrame,
+    labelled_tiles: list[str],
+    target_raster_vals: list[int],
+    testing_window: Window | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Internally calculates bias errors and patch areas dynamically.
     """
@@ -386,11 +459,13 @@ def _get_vector_vs_raster_errors(vector_gdf: gpd.GeoDataFrame, labelled_tiles: L
                 true_pct = np.isin(l_data, target_raster_vals).mean() * 100
 
                 # 4. Model % (Intersect Vector with the Patch Bounding Box)
-                patch_gdf = gpd.GeoDataFrame({'geometry': [patch_geom]}, crs=src.crs)
+                patch_gdf = gpd.GeoDataFrame({"geometry": [patch_geom]}, crs=src.crs)
                 vector_gdf = vector_gdf.to_crs(src.crs)
                 clipped_features = gpd.clip(vector_gdf, patch_gdf)
 
-                model_pct = (clipped_features.geometry.area.sum() / patch_geom.area) * 100
+                model_pct = (
+                    clipped_features.geometry.area.sum() / patch_geom.area
+                ) * 100
 
                 # 5. Error
                 errors.append(model_pct - true_pct)
@@ -400,8 +475,15 @@ def _get_vector_vs_raster_errors(vector_gdf: gpd.GeoDataFrame, labelled_tiles: L
         logger.error(f"Error getting vector vs raster errors: {e}")
         return np.array([]), np.array([])
 
-def evaluate_final_cover_and_errors(canopy_vector_path: str, green_vector_path: str, boundary_vector_path: str,
-                                    labelled_tiles: List[str], plot_output_path: str, testing_window: Optional[Window] = None) -> Dict[str, float]:
+
+def evaluate_final_cover_and_errors(
+    canopy_vector_path: str,
+    green_vector_path: str,
+    boundary_vector_path: str,
+    labelled_tiles: list[str],
+    plot_output_path: str,
+    testing_window: Window | None = None,
+) -> dict[str, float]:
     """
     Master function: Computes final cover %, extracts errors, calculates SE, and plots convergence.
 
@@ -424,8 +506,12 @@ def evaluate_final_cover_and_errors(canopy_vector_path: str, green_vector_path: 
         g_base_cover = _compute_vector_cover_percentage(green_gdf, boundary_gdf)
 
         # 3. Calculate Errors
-        c_errs, c_areas = _get_vector_vs_raster_errors(canopy_gdf, labelled_tiles, [1], testing_window)
-        g_errs, g_areas = _get_vector_vs_raster_errors(green_gdf, labelled_tiles, [1, 2], testing_window)
+        c_errs, c_areas = _get_vector_vs_raster_errors(
+            canopy_gdf, labelled_tiles, [1], testing_window
+        )
+        g_errs, g_areas = _get_vector_vs_raster_errors(
+            green_gdf, labelled_tiles, [1, 2], testing_window
+        )
 
         # 4. Convergence Statistics
         def get_stats(errors):
@@ -454,38 +540,61 @@ def evaluate_final_cover_and_errors(canopy_vector_path: str, green_vector_path: 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
         cumulative_ha = np.cumsum(c_areas)
 
-        ax1.errorbar(cumulative_ha, c_means, yerr=c_stds, fmt='-ob', capsize=5, label='Canopy Mean Error')
-        ax1.errorbar(cumulative_ha, g_means, yerr=g_stds, fmt='-og', capsize=5, label='Green Cover Mean Error')
+        ax1.errorbar(
+            cumulative_ha,
+            c_means,
+            yerr=c_stds,
+            fmt="-ob",
+            capsize=5,
+            label="Canopy Mean Error",
+        )
+        ax1.errorbar(
+            cumulative_ha,
+            g_means,
+            yerr=g_stds,
+            fmt="-og",
+            capsize=5,
+            label="Green Cover Mean Error",
+        )
         ax1.set_ylabel("Absolute Error (%)")
         ax1.set_title("Error Convergence")
         ax1.legend()
         ax1.grid(alpha=0.3)
 
-        ax2.plot(cumulative_ha, c_rms, '--*b', label='Canopy RMS Error')
-        ax2.plot(cumulative_ha, g_rms, '--*g', label='Green Cover RMS Error')
+        ax2.plot(cumulative_ha, c_rms, "--*b", label="Canopy RMS Error")
+        ax2.plot(cumulative_ha, g_rms, "--*g", label="Green Cover RMS Error")
         ax2.set_ylabel("RMS Error (%)")
         ax2.set_xlabel("Cumulative Testing Area (Hectares)")
         ax2.legend()
         ax2.grid(alpha=0.3)
 
         plt.tight_layout()
-        plt.savefig(plot_output_path, dpi=300, bbox_inches='tight')
+        plt.savefig(plot_output_path, dpi=300, bbox_inches="tight")
         plt.show()
 
         return {
-            'Canopy Cover': c_base_cover, 'Canopy SE': se_canopy,
-            'Green Cover': g_base_cover, 'Green SE': se_green,
-            'Total Area (Ha)': total_area_ha
+            "Canopy Cover": c_base_cover,
+            "Canopy SE": se_canopy,
+            "Green Cover": g_base_cover,
+            "Green SE": se_green,
+            "Total Area (Ha)": total_area_ha,
         }
     except Exception as e:
         logger.error(f"Error evaluating final cover and errors: {e}")
         raise
 
+
 # =====================================================================
 # 7. ITREE STATISTICAL COVER ESTIMATION
 # =====================================================================
 
-def calculate_itree_cover(points_df: pd.DataFrame, label_col: str, manual_names: Dict[int, str], verbose: bool = True) -> Dict[str, Any]:
+
+def calculate_itree_cover(
+    points_df: pd.DataFrame,
+    label_col: str,
+    manual_names: dict[int, str],
+    verbose: bool = True,
+) -> dict[str, Any]:
     """
     Calculates statistical Canopy and Green Cover based on the iTree methodology.
 
@@ -501,7 +610,7 @@ def calculate_itree_cover(points_df: pd.DataFrame, label_col: str, manual_names:
         raw_counts = mapped_series.value_counts(normalize=True) * 100
 
         if verbose:
-            table_df = pd.DataFrame({'Raw Percentage (%)': raw_counts}).round(2)
+            table_df = pd.DataFrame({"Raw Percentage (%)": raw_counts}).round(2)
             table_df.index.name = None
 
             print("--- RAW LABEL PERCENTAGES ---")
@@ -509,74 +618,98 @@ def calculate_itree_cover(points_df: pd.DataFrame, label_col: str, manual_names:
             print("\n" + "=" * 40 + "\n")
 
         # 2. Extract specific percentages
-        pct_tree = raw_counts.get('Tree', 0.0)
-        pct_veg_not_tree = raw_counts.get('Vegetation (not Tree)', 0.0)
-        pct_bare = raw_counts.get('Bare Ground', 0.0)
-        pct_veg_unsure = raw_counts.get('Vegetation (unsure if Tree)', 0.0)
-        pct_unsure_total = raw_counts.get('Unsure', 0.0)
+        pct_tree = raw_counts.get("Tree", 0.0)
+        pct_veg_not_tree = raw_counts.get("Vegetation (not Tree)", 0.0)
+        pct_bare = raw_counts.get("Bare Ground", 0.0)
+        pct_veg_unsure = raw_counts.get("Vegetation (unsure if Tree)", 0.0)
+        pct_unsure_total = raw_counts.get("Unsure", 0.0)
 
         # 3. CANOPY COVER CALCULATION
-        if verbose: print("--- CANOPY COVER ESTIMATE ---")
+        if verbose:
+            print("--- CANOPY COVER ESTIMATE ---")
 
         known_veg = pct_tree + pct_veg_not_tree
         tree_ratio = pct_tree / known_veg if known_veg > 0 else 0
 
         if verbose:
-            print(f"Step A: Find tree proportion in known vegetation")
-            print(f"Total known vegetation = {pct_tree:.2f}% (Tree) + {pct_veg_not_tree:.2f}% (Veg not Tree) = {known_veg:.2f}%")
+            print("Step A: Find tree proportion in known vegetation")
+            print(
+                f"Total known vegetation = {pct_tree:.2f}% (Tree) + {pct_veg_not_tree:.2f}% (Veg not Tree) = {known_veg:.2f}%"
+            )
             print(f"Proportion = {pct_tree:.2f} / {known_veg:.2f} = {tree_ratio:.4f}")
 
         est_hidden_trees = pct_veg_unsure * tree_ratio
 
         if verbose:
-            print(f"\nStep B: Estimate hidden trees")
-            print(f"Estimated hidden trees = {pct_veg_unsure:.2f}% (Veg unsure if Tree) * {tree_ratio:.4f} = {est_hidden_trees:.2f}%")
+            print("\nStep B: Estimate hidden trees")
+            print(
+                f"Estimated hidden trees = {pct_veg_unsure:.2f}% (Veg unsure if Tree) * {tree_ratio:.4f} = {est_hidden_trees:.2f}%"
+            )
 
         final_canopy = pct_tree + est_hidden_trees
 
         if verbose:
-            print(f"\nStep C: Final Canopy Cover")
-            print(f"Final Canopy = {pct_tree:.2f}% + {est_hidden_trees:.2f}% = {final_canopy:.2f}%")
+            print("\nStep C: Final Canopy Cover")
+            print(
+                f"Final Canopy = {pct_tree:.2f}% + {est_hidden_trees:.2f}% = {final_canopy:.2f}%"
+            )
             print("-" * 40)
 
         # 4. GREEN COVER CALCULATION
-        if verbose: print("\n--- GREEN COVER ESTIMATE ---")
+        if verbose:
+            print("\n--- GREEN COVER ESTIMATE ---")
 
         known_green = pct_bare + pct_tree + pct_veg_not_tree + pct_veg_unsure
 
         if verbose:
-            print(f"Step A: Sum all confirmed green points")
-            print(f"Known Green = {pct_bare:.2f}% + {pct_tree:.2f}% + {pct_veg_not_tree:.2f}% + {pct_veg_unsure:.2f}% = {known_green:.2f}%")
+            print("Step A: Sum all confirmed green points")
+            print(
+                f"Known Green = {pct_bare:.2f}% + {pct_tree:.2f}% + {pct_veg_not_tree:.2f}% + {pct_veg_unsure:.2f}% = {known_green:.2f}%"
+            )
 
         known_sample = 100.0 - pct_unsure_total
         green_ratio = known_green / known_sample if known_sample > 0 else 0
 
         if verbose:
-            print(f"\nStep B: Find green proportion in the known sample")
-            print(f"Known sample size = 100% - {pct_unsure_total:.2f}% (Total Unsure) = {known_sample:.2f}%")
-            print(f"Proportion = {known_green:.2f} / {known_sample:.2f} = {green_ratio:.4f}")
+            print("\nStep B: Find green proportion in the known sample")
+            print(
+                f"Known sample size = 100% - {pct_unsure_total:.2f}% (Total Unsure) = {known_sample:.2f}%"
+            )
+            print(
+                f"Proportion = {known_green:.2f} / {known_sample:.2f} = {green_ratio:.4f}"
+            )
 
         est_hidden_green = pct_unsure_total * green_ratio
 
         if verbose:
-            print(f"\nStep C: Estimate hidden green points")
-            print(f"Estimated hidden green = {pct_unsure_total:.2f}% * {green_ratio:.4f} = {est_hidden_green:.2f}%")
+            print("\nStep C: Estimate hidden green points")
+            print(
+                f"Estimated hidden green = {pct_unsure_total:.2f}% * {green_ratio:.4f} = {est_hidden_green:.2f}%"
+            )
 
         final_green = known_green + est_hidden_green
 
         if verbose:
-            print(f"\nStep D: Final Green Cover")
-            print(f"Final Green = {known_green:.2f}% + {est_hidden_green:.2f}% = {final_green:.2f}%")
+            print("\nStep D: Final Green Cover")
+            print(
+                f"Final Green = {known_green:.2f}% + {est_hidden_green:.2f}% = {final_green:.2f}%"
+            )
             print("=" * 40 + "\n")
 
         # 5. MARGIN OF ERROR (STANDARD ERROR)
         n_total = len(points_df)
 
         p_canopy = final_canopy / 100
-        se_canopy = math.sqrt((p_canopy * (1 - p_canopy)) / n_total) * 100 if n_total > 0 else 0.0
+        se_canopy = (
+            math.sqrt((p_canopy * (1 - p_canopy)) / n_total) * 100
+            if n_total > 0
+            else 0.0
+        )
 
         p_green = final_green / 100
-        se_green = math.sqrt((p_green * (1 - p_green)) / n_total) * 100 if n_total > 0 else 0.0
+        se_green = (
+            math.sqrt((p_green * (1 - p_green)) / n_total) * 100 if n_total > 0 else 0.0
+        )
 
         if verbose:
             print("\n--- FINAL STATISTICAL ESTIMATES (+- SE) ---")
@@ -588,15 +721,16 @@ def calculate_itree_cover(points_df: pd.DataFrame, label_col: str, manual_names:
             print("=" * 40 + "\n")
 
         return {
-            'iTree Canopy Cover (%)': final_canopy,
-            'iTree Canopy SE (%)': se_canopy,
-            'iTree Green Cover (%)': final_green,
-            'iTree Green SE (%)': se_green,
-            'Total Evaluated Points': n_total
+            "iTree Canopy Cover (%)": final_canopy,
+            "iTree Canopy SE (%)": se_canopy,
+            "iTree Green Cover (%)": final_green,
+            "iTree Green SE (%)": se_green,
+            "Total Evaluated Points": n_total,
         }
     except Exception as e:
         logger.error(f"Error calculating iTree cover: {e}")
         raise
+
 
 def print_gla_itree_calculations() -> None:
     """Prints the hardcoded GLA iTree calculations for reference."""
@@ -652,9 +786,11 @@ Green Cover Estimate:  53.1% +- 0.79%
     
     """)
 
+
 # =====================================================================
 # 8. COMPARISON AND EXTERNAL DATA UTILITIES
 # =====================================================================
+
 
 def style_comparison_table(df: pd.DataFrame) -> Any:
     """
@@ -665,30 +801,44 @@ def style_comparison_table(df: pd.DataFrame) -> Any:
     """
     try:
         styler = (
-            df.style
-            .set_properties(**{
-                'border': '1px solid black',
-                'text-align': 'center',
-                'vertical-align': 'middle',
-                'padding': '6px 12px'
-            })
-            .set_table_styles([
-                {'selector': 'th', 'props': [
-                    ('border', '1px solid black'),
-                    ('background-color', '#f2f2f2'),
-                    ('text-align', 'center'),
-                    ('font-weight', 'bold')
-                ]}
-            ])
-            .hide(axis='index')
-            .set_table_attributes('style="margin-left: auto; margin-right: auto; border-collapse: collapse;"')
+            df.style.set_properties(
+                **{
+                    "border": "1px solid black",
+                    "text-align": "center",
+                    "vertical-align": "middle",
+                    "padding": "6px 12px",
+                }
+            )
+            .set_table_styles(
+                [
+                    {
+                        "selector": "th",
+                        "props": [
+                            ("border", "1px solid black"),
+                            ("background-color", "#f2f2f2"),
+                            ("text-align", "center"),
+                            ("font-weight", "bold"),
+                        ],
+                    }
+                ]
+            )
+            .hide(axis="index")
+            .set_table_attributes(
+                'style="margin-left: auto; margin-right: auto; border-collapse: collapse;"'
+            )
         )
         return styler
     except Exception as e:
         logger.error(f"Error styling comparison table: {e}")
         return df
 
-def calculate_ukceh_covers(westminster_mask: str, ukceh_lcm: str, canopy_classes: List[int], green_only_classes: List[int]) -> None:
+
+def calculate_ukceh_covers(
+    westminster_mask: str,
+    ukceh_lcm: str,
+    canopy_classes: list[int],
+    green_only_classes: list[int],
+) -> None:
     """
     Calculates cover percentages from UKCEH LCM data.
 
@@ -721,7 +871,7 @@ def calculate_ukceh_covers(westminster_mask: str, ukceh_lcm: str, canopy_classes
         pct_canopy = (count_canopy / total_land_pixels) * 100
         pct_total_green = (count_total_green / total_land_pixels) * 100
 
-        print(f"UKCEH Westminster Results:\n")
+        print("UKCEH Westminster Results:\n")
         print(f"Total Pixels Sampled: {total_land_pixels}")
         print(f"Total Canopy Pixels Sampled: {count_canopy}")
         print(f"Total Green Pixels Sampled: {count_total_green} (includes canopy)\n")
