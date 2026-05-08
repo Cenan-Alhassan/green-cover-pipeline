@@ -1,7 +1,3 @@
-# Constants
-BALANCED_RANDOM_STATE = 42
-
-# Standard Libraries
 import datetime
 import logging
 import os
@@ -11,24 +7,18 @@ from pathlib import Path
 from typing import Any
 
 import joblib
-
-# Visualization Libraries
 import matplotlib.pyplot as plt
-
-# Scientific Computing and Data Analysis
 import numpy as np
 import pandas as pd
-
-# Geospatial and Image Processing Libraries
 import rasterio
-
-# Machine Learning (Scikit-Learn) Libraries
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
     balanced_accuracy_score,
     classification_report,
     confusion_matrix,
 )
+
+BALANCED_RANDOM_STATE = 42
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -135,7 +125,8 @@ def get_ml_model_input(
 
         # 2. Iterate through each tile path
         for i, path in enumerate(stack_paths):
-            # Load the feature stack (assumed already cropped of buffer in generate_features)
+            # Load the feature stack (assumed already cropped of
+            # buffer in generate_features)
             stack_np = np.load(path)
 
             # Call the generalized splitter
@@ -448,7 +439,8 @@ def write_metrics_report(
             f.write(f"Training Balanced Acc: {metrics_dict['train_acc']:.4f}\n")
             f.write(f"Testing Balanced Acc:  {metrics_dict['test_acc']:.4f}\n")
             f.write(
-                f"Generalization Gap:    {metrics_dict['train_acc'] - metrics_dict['test_acc']:.4f}\n\n"
+                "Generalization Gap:    "
+                f"{metrics_dict['train_acc'] - metrics_dict['test_acc']:.4f}\n\n"
             )
 
             f.write("--- Per-Tile Accuracy ---\n")
@@ -471,7 +463,8 @@ def write_metrics_report(
             for rank in range(min(10, len(indices))):
                 idx = indices[rank]
                 f.write(
-                    f"{rank + 1}. {feature_names[idx]}: {metrics_dict['importances'][idx]:.4f}\n"
+                    f"{rank + 1}. {feature_names[idx]}: "
+                    f"{metrics_dict['importances'][idx]:.4f}\n"
                 )
     except Exception as e:
         logger.error(f"Error in write_metrics_report: {e}")
@@ -498,7 +491,7 @@ def save_diagnostic_rasters(
             os.makedirs(output_folder)
 
         # 2. Iterate through each tile stack and metadata
-        for stack_path, meta_path in zip(stack_paths, meta_paths):
+        for stack_path, meta_path in zip(stack_paths, meta_paths, strict=True):
             # Load data
             stack = np.load(stack_path)
             # All channels except the last one are features
