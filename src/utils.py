@@ -1,45 +1,41 @@
 # Constants
-DEFAULT_WFS_VERSION = '2.0.0'
-DEFAULT_OUTPUT_FORMAT = 'json'
+DEFAULT_WFS_VERSION = "2.0.0"
+DEFAULT_OUTPUT_FORMAT = "json"
 METADATA_WFS_URL = "https://environment.data.gov.uk/spatialdata/survey-index-files/wfs"
-DSM_ID = 'dataset-9f0fa3fc-a860-4729-adc9-47fe53f658d0:LIDAR_Composite_1m_First_Return_DSM_2022_extents'
-DTM_ID = 'dataset-9f0fa3fc-a860-4729-adc9-47fe53f658d0:LIDAR_Composite_1m_DTM_2022_extents'
-NATIONAL_LIDAR_ID = 'dataset-9f0fa3fc-a860-4729-adc9-47fe53f658d0:National_LIDAR_Programme_Index_Catalogue'
-VERTICAL_PHOTO_ID = 'dataset-9f0fa3fc-a860-4729-adc9-47fe53f658d0:Vertical_photography_index_catalogue'
+DSM_ID = "dataset-9f0fa3fc-a860-4729-adc9-47fe53f658d0:LIDAR_Composite_1m_First_Return_DSM_2022_extents"
+DTM_ID = (
+    "dataset-9f0fa3fc-a860-4729-adc9-47fe53f658d0:LIDAR_Composite_1m_DTM_2022_extents"
+)
+NATIONAL_LIDAR_ID = "dataset-9f0fa3fc-a860-4729-adc9-47fe53f658d0:National_LIDAR_Programme_Index_Catalogue"
+VERTICAL_PHOTO_ID = (
+    "dataset-9f0fa3fc-a860-4729-adc9-47fe53f658d0:Vertical_photography_index_catalogue"
+)
 
 # Standard Libraries
-import os
 import json
-import requests
-import math
-import zipfile
 import logging
-from pathlib import Path
+import os
 import pickle
+
+import numpy as np
 
 # Geospatial and Image Processing Libraries
 import rasterio
-from rasterio.windows import from_bounds
-import cv2 
-import numpy as np
-
-# Scikit-Image and SciPy
-from skimage.feature import graycomatrix, graycoprops
-from skimage.util import view_as_windows
-from skimage.filters.rank import entropy, minimum
-from skimage.morphology import disk
-from scipy.ndimage import median_filter, minimum_filter
 
 # Web Services
 from owslib.wfs import WebFeatureService
-from owslib.wcs import WebCoverageService
+
+# Scikit-Image and SciPy
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 # =====================================================================
 # 1. LIDAR DATA SERVICES
 # =====================================================================
+
 
 def print_defra_lidar_indices() -> None:
     """
@@ -51,7 +47,7 @@ def print_defra_lidar_indices() -> None:
 
         # 2. Iterate and print contents
         for i, index in enumerate(list(wfs.contents)):
-            print(f"{i+1}.	 {index}")
+            print(f"{i + 1}.	 {index}")
     except Exception as e:
         logging.error(f"Error fetching DEFRA LIDAR indices: {e}")
 
@@ -69,9 +65,9 @@ def view_lidar_composite_dates(bbox: tuple, type: str) -> None:
     """
     try:
         # 1. Select the correct dataset ID based on type
-        if type == 'DSM':
+        if type == "DSM":
             ID = DSM_ID
-        elif type == 'DTM':
+        elif type == "DTM":
             ID = DTM_ID
         else:
             raise ValueError("Error: The 'type' variable can only be DSM or DTM.")
@@ -80,14 +76,18 @@ def view_lidar_composite_dates(bbox: tuple, type: str) -> None:
         wfs = WebFeatureService(url=METADATA_WFS_URL, version=DEFAULT_WFS_VERSION)
 
         # 3. Get features within bounding box
-        response = wfs.getfeature(typename=ID, bbox=bbox, outputFormat=DEFAULT_OUTPUT_FORMAT)
+        response = wfs.getfeature(
+            typename=ID, bbox=bbox, outputFormat=DEFAULT_OUTPUT_FORMAT
+        )
         data = json.loads(response.read())
 
         # 4. Print metadata for each feature
-        for i, feature in enumerate(data['features']):
-            props = feature['properties']
-            print(f"{i+1}.	Filename: {props.get('filename')} | Start date: {props.get('sd_flown')} | "
-                  f"End date: {props.get('ed_flown')} | Resolution: {props.get('resolution')}m")
+        for i, feature in enumerate(data["features"]):
+            props = feature["properties"]
+            print(
+                f"{i + 1}.	Filename: {props.get('filename')} | Start date: {props.get('sd_flown')} | "
+                f"End date: {props.get('ed_flown')} | Resolution: {props.get('resolution')}m"
+            )
     except Exception as e:
         logging.error(f"Error fetching LIDAR composite dates: {e}")
 
@@ -101,13 +101,17 @@ def view_national_lidar_programme_dates(bbox: tuple) -> None:
         wfs = WebFeatureService(url=METADATA_WFS_URL, version=DEFAULT_WFS_VERSION)
 
         # 2. Get features within bounding box
-        response = wfs.getfeature(typename=NATIONAL_LIDAR_ID, bbox=bbox, outputFormat=DEFAULT_OUTPUT_FORMAT)
+        response = wfs.getfeature(
+            typename=NATIONAL_LIDAR_ID, bbox=bbox, outputFormat=DEFAULT_OUTPUT_FORMAT
+        )
         data = json.loads(response.read())
 
         # 3. Print metadata for each feature
-        for i, feature in enumerate(data['features']):
-            props = feature['properties']
-            print(f"{i+1}.\tTile: {props.get('tilename')} | Date: {props.get('surveys')} | Resolution: {props.get('resolution')}m")
+        for i, feature in enumerate(data["features"]):
+            props = feature["properties"]
+            print(
+                f"{i + 1}.\tTile: {props.get('tilename')} | Date: {props.get('surveys')} | Resolution: {props.get('resolution')}m"
+            )
     except Exception as e:
         logging.error(f"Error fetching National LIDAR Programme dates: {e}")
 
@@ -121,21 +125,29 @@ def view_vertical_photography_dates(bbox: tuple) -> None:
         wfs = WebFeatureService(url=METADATA_WFS_URL, version=DEFAULT_WFS_VERSION)
 
         # 2. Get features within bounding box
-        response = wfs.getfeature(typename=VERTICAL_PHOTO_ID, bbox=bbox, outputFormat=DEFAULT_OUTPUT_FORMAT)
+        response = wfs.getfeature(
+            typename=VERTICAL_PHOTO_ID, bbox=bbox, outputFormat=DEFAULT_OUTPUT_FORMAT
+        )
         data = json.loads(response.read())
 
         # 3. Print metadata for each feature
-        for i, feature in enumerate(data['features']):
-            props = feature['properties']
-            print(f"{i+1}.\tImage type: {props.get('type')} | Date: {props.get('year')} | Res: {props.get('resolution')}m")
+        for i, feature in enumerate(data["features"]):
+            props = feature["properties"]
+            print(
+                f"{i + 1}.\tImage type: {props.get('type')} | Date: {props.get('year')} | Res: {props.get('resolution')}m"
+            )
     except Exception as e:
         logging.error(f"Error fetching vertical photography dates: {e}")
+
 
 # =====================================================================
 # 2. RASTER PROCESSING UTILITIES
 # =====================================================================
 
-def rasterize_feature_stack(feature_stack_path: str, metadata_path: str, output_path: str, buffer_px: int) -> None:
+
+def rasterize_feature_stack(
+    feature_stack_path: str, metadata_path: str, output_path: str, buffer_px: int
+) -> None:
     """
     Loads a .npy feature stack and its .pkl metadata to save as a multi-band TIF.
 
@@ -152,7 +164,7 @@ def rasterize_feature_stack(feature_stack_path: str, metadata_path: str, output_
         # 2. Load the data from the provided paths
         feature_stack = np.load(feature_stack_path)
 
-        with open(metadata_path, 'rb') as f:
+        with open(metadata_path, "rb") as f:
             original_metadata = pickle.load(f)
 
         # 3. Prepare the new metadata
@@ -160,19 +172,21 @@ def rasterize_feature_stack(feature_stack_path: str, metadata_path: str, output_
 
         # Update transform to account for the 30px crop (shifting the origin)
         # This is critical for spatial alignment in GIS software
-        old_transform = meta['transform']
+        old_transform = meta["transform"]
         new_transform = old_transform  # Placeholder for actual transformation logic
 
-        meta.update({
-            "count": feature_stack.shape[0],  # total bands (features + labels)
-            "height": feature_stack.shape[1],  # target height (e.g., 210)
-            "width": feature_stack.shape[2],  # target width (e.g., 210)
-            "dtype": 'float32',
-            "transform": new_transform
-        })
+        meta.update(
+            {
+                "count": feature_stack.shape[0],  # total bands (features + labels)
+                "height": feature_stack.shape[1],  # target height (e.g., 210)
+                "width": feature_stack.shape[2],  # target width (e.g., 210)
+                "dtype": "float32",
+                "transform": new_transform,
+            }
+        )
 
         # 4. Write the multi-band TIF
-        with rasterio.open(output_path, 'w', **meta) as dst:
+        with rasterio.open(output_path, "w", **meta) as dst:
             dst.write(feature_stack.astype(np.float32))
 
         print(f"Rasterized stack ({feature_stack.shape[0]} bands) saved: {output_path}")

@@ -14,25 +14,26 @@ GLCM_LEVELS = 32
 
 # Standard Libraries
 import datetime
-import os
 import logging
-from typing import Dict, List, Optional, Any, Tuple
+import os
+from typing import Any
+
+import cv2
+import joblib
 
 # Scientific Computing and Image Processing
 import numpy as np
-import cv2
-import joblib
 
 # Geospatial Libraries
 import rasterio
 from rasterio.windows import Window
+from scipy.ndimage import gaussian_filter, median_filter, minimum_filter
+from skimage.feature import graycomatrix, graycoprops
 
 # Image Processing (Scikit-Image & SciPy)
 from skimage.filters.rank import entropy, minimum
 from skimage.morphology import disk
-from skimage.feature import graycomatrix, graycoprops
 from skimage.util import view_as_windows
-from scipy.ndimage import median_filter, minimum_filter, gaussian_filter
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -41,8 +42,13 @@ logger = logging.getLogger(__name__)
 # 1. MATHEMATICAL & POST-PROCESSING HELPERS
 # =====================================================================
 
-def spatial_activation_math(prob_array: np.ndarray, sigma: float = DEFAULT_SIGMA, threshold: float = DEFAULT_THRESHOLD,
-                            steepness: float = DEFAULT_STEEPNESS) -> np.ndarray:
+
+def spatial_activation_math(
+    prob_array: np.ndarray,
+    sigma: float = DEFAULT_SIGMA,
+    threshold: float = DEFAULT_THRESHOLD,
+    steepness: float = DEFAULT_STEEPNESS,
+) -> np.ndarray:
     """
     Enhances faint vegetation signals using spatial consensus.
     If a faint pixel is part of a cohesive "blob", its probability is amplified
@@ -71,7 +77,10 @@ def spatial_activation_math(prob_array: np.ndarray, sigma: float = DEFAULT_SIGMA
         logger.error(f"Error in spatial_activation_math: {e}")
         return prob_array
 
-def calculate_glcm_map_optimized(image: np.ndarray, prop: str, window_size: int, dist: int) -> np.ndarray:
+
+def calculate_glcm_map_optimized(
+    image: np.ndarray, prop: str, window_size: int, dist: int
+) -> np.ndarray:
     """
     Optimized GLCM texture calculation using quantization and striding.
 
@@ -84,7 +93,9 @@ def calculate_glcm_map_optimized(image: np.ndarray, prop: str, window_size: int,
     try:
         # 1. Quantize ONCE for the whole chunk (0-31)
         img_min, img_max = image.min(), image.max()
-        img_quantized = (((image - img_min) / (max(img_max - img_min, 1e-6))) * (GLCM_LEVELS - 1)).astype(np.uint8)
+        img_quantized = (
+            ((image - img_min) / (max(img_max - img_min, 1e-6))) * (GLCM_LEVELS - 1)
+        ).astype(np.uint8)
 
         # 2. Extract patches using a sliding window
         patches = view_as_windows(img_quantized, (window_size, window_size))
@@ -100,22 +111,37 @@ def calculate_glcm_map_optimized(image: np.ndarray, prop: str, window_size: int,
         for i in range(h_sub):
             for j in range(w_sub):
                 patch = patches_sub[i, j]
-                glcm = graycomatrix(patch, distances=[dist], angles=[0], levels=GLCM_LEVELS, symmetric=True, normed=True)
+                glcm = graycomatrix(
+                    patch,
+                    distances=[dist],
+                    angles=[0],
+                    levels=GLCM_LEVELS,
+                    symmetric=True,
+                    normed=True,
+                )
                 texture_map_sub[i, j] = graycoprops(glcm, prop)[0, 0]
 
         # 5. Resize back to original spatial dimensions
-        texture_map = cv2.resize(texture_map_sub, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_LINEAR)
+        texture_map = cv2.resize(
+            texture_map_sub,
+            (image.shape[1], image.shape[0]),
+            interpolation=cv2.INTER_LINEAR,
+        )
 
         return texture_map
     except Exception as e:
         logger.error(f"Error in calculate_glcm_map_optimized: {e}")
         return np.zeros_like(image, dtype=np.float32)
 
+
 # =====================================================================
 # 2. FEATURE GENERATION HELPERS
 # =====================================================================
 
-def generate_static_height_features(dsm_path: str, dtm_path: str, read_window: Window) -> Dict[str, np.ndarray]:
+
+def generate_static_height_features(
+    dsm_path: str, dtm_path: str, read_window: Window
+) -> dict[str, np.ndarray]:
     """
     Computes static features based on LiDAR data (DSM/DTM).
     These features do not change across temporal dates.
@@ -157,12 +183,15 @@ def generate_static_height_features(dsm_path: str, dtm_path: str, read_window: W
         # 6. Feature 44: Binary flag for height > 4m (Canopy Shield)
         f44 = (f22 > 4.0).astype(np.float32)
 
-        return {'f20': f20, 'f21': f21, 'f22': f22, 'f23': f23, 'f44': f44}
+        return {"f20": f20, "f21": f21, "f22": f22, "f23": f23, "f44": f44}
     except Exception as e:
         logger.error(f"Error generating static height features: {e}")
         raise
 
-def generate_temporal_spectral_features(date_files: Dict[str, str], read_window: Window) -> Dict[str, np.ndarray]:
+
+def generate_temporal_spectral_features(
+    date_files: dict[str, str], read_window: Window
+) -> dict[str, np.ndarray]:
     """
     Computes spectral and texture features for a specific satellite observation date.
 
@@ -172,10 +201,12 @@ def generate_temporal_spectral_features(date_files: Dict[str, str], read_window:
     """
     try:
         # 1. Load spectral bands
-        with rasterio.open(date_files['blue']) as b, \
-                rasterio.open(date_files['green']) as g, \
-                rasterio.open(date_files['red']) as r, \
-                rasterio.open(date_files['nir']) as n:
+        with (
+            rasterio.open(date_files["blue"]) as b,
+            rasterio.open(date_files["green"]) as g,
+            rasterio.open(date_files["red"]) as r,
+            rasterio.open(date_files["nir"]) as n,
+        ):
             blue = b.read(1, window=read_window, boundless=True).astype(np.float32)
             green = g.read(1, window=read_window, boundless=True).astype(np.float32)
             red = r.read(1, window=read_window, boundless=True).astype(np.float32)
@@ -227,11 +258,11 @@ def generate_temporal_spectral_features(date_files: Dict[str, str], read_window:
         f33 = median_filter(f7, size=5)
 
         # 11. GLCM Texture Maps (f34-f40)
-        f34 = calculate_glcm_map_optimized(f6, 'dissimilarity', 25, 2)
-        f35 = calculate_glcm_map_optimized(f6, 'dissimilarity', 10, 1)
-        f36 = calculate_glcm_map_optimized(f6, 'correlation', 25, 2)
-        f37 = calculate_glcm_map_optimized(f15, 'correlation', 25, 2)
-        f38 = calculate_glcm_map_optimized(f15, 'dissimilarity', 25, 2)
+        f34 = calculate_glcm_map_optimized(f6, "dissimilarity", 25, 2)
+        f35 = calculate_glcm_map_optimized(f6, "dissimilarity", 10, 1)
+        f36 = calculate_glcm_map_optimized(f6, "correlation", 25, 2)
+        f37 = calculate_glcm_map_optimized(f15, "correlation", 25, 2)
+        f38 = calculate_glcm_map_optimized(f15, "dissimilarity", 25, 2)
         f39 = minimum_filter(f38, size=10)
         f40 = median_filter(f38, size=10)
 
@@ -241,28 +272,61 @@ def generate_temporal_spectral_features(date_files: Dict[str, str], read_window:
         f43 = cv2.blur(red, (9, 9))
 
         return {
-            'f1': f1, 'f2': f2, 'f3': f3, 'f6': f6, 'f7': f7, 'f8': f8, 'f9': f9,
-            'f10': f10, 'f11': f11, 'f12': f12, 'f13': f13, 'f14': f14, 'f15': f15,
-            'f16': f16, 'f17': f17, 'f18': f18, 'f19': f19, 'f24': f24, 'f25': f25,
-            'f26': f26, 'f27': f27, 'f28': f28, 'f29': f29, 'f30': f30, 'f31': f31,
-            'f32': f32, 'f33': f33, 'f34': f34, 'f35': f35, 'f36': f36, 'f37': f37,
-            'f38': f38, 'f39': f39, 'f40': f40, 'f41': f41, 'f42': f42, 'f43': f43
+            "f1": f1,
+            "f2": f2,
+            "f3": f3,
+            "f6": f6,
+            "f7": f7,
+            "f8": f8,
+            "f9": f9,
+            "f10": f10,
+            "f11": f11,
+            "f12": f12,
+            "f13": f13,
+            "f14": f14,
+            "f15": f15,
+            "f16": f16,
+            "f17": f17,
+            "f18": f18,
+            "f19": f19,
+            "f24": f24,
+            "f25": f25,
+            "f26": f26,
+            "f27": f27,
+            "f28": f28,
+            "f29": f29,
+            "f30": f30,
+            "f31": f31,
+            "f32": f32,
+            "f33": f33,
+            "f34": f34,
+            "f35": f35,
+            "f36": f36,
+            "f37": f37,
+            "f38": f38,
+            "f39": f39,
+            "f40": f40,
+            "f41": f41,
+            "f42": f42,
+            "f43": f43,
         }
     except Exception as e:
         logger.error(f"Error generating temporal spectral features: {e}")
         raise
 
+
 # =====================================================================
 # 3. THE UNIFIED CLASSIFICATION ENGINE
 # =====================================================================
 
+
 def soft_classify(
-        feature_matrices: List[np.ndarray],
-        model: Any,
-        height: int,
-        width: int,
-        mean_prob: bool = False,
-        spatial_activation_params: Optional[Dict[str, Dict[str, float]]] = None
+    feature_matrices: list[np.ndarray],
+    model: Any,
+    height: int,
+    width: int,
+    mean_prob: bool = False,
+    spatial_activation_params: dict[str, dict[str, float]] | None = None,
 ) -> np.ndarray:
     """
     Performs multi-date classification using either Mean or Max Probability Merging.
@@ -304,23 +368,22 @@ def soft_classify(
 
         # 4. Optional Spatial Activation (The Sigmoid Amplifier)
         if spatial_activation_params is not None:
-
-            if 'Canopy' in spatial_activation_params:
-                params = spatial_activation_params['Canopy']
+            if "Canopy" in spatial_activation_params:
+                params = spatial_activation_params["Canopy"]
                 prob_canopy = spatial_activation_math(
                     prob_canopy,
-                    sigma=params.get('sigma', DEFAULT_SIGMA),
-                    threshold=params.get('threshold', DEFAULT_THRESHOLD),
-                    steepness=params.get('steepness', DEFAULT_STEEPNESS)
+                    sigma=params.get("sigma", DEFAULT_SIGMA),
+                    threshold=params.get("threshold", DEFAULT_THRESHOLD),
+                    steepness=params.get("steepness", DEFAULT_STEEPNESS),
                 )
 
-            if 'Green' in spatial_activation_params:
-                params = spatial_activation_params['Green']
+            if "Green" in spatial_activation_params:
+                params = spatial_activation_params["Green"]
                 prob_green = spatial_activation_math(
                     prob_green,
-                    sigma=params.get('sigma', DEFAULT_SIGMA),
-                    threshold=params.get('threshold', 0.25),
-                    steepness=params.get('steepness', DEFAULT_STEEPNESS)
+                    sigma=params.get("sigma", DEFAULT_SIGMA),
+                    threshold=params.get("threshold", 0.25),
+                    steepness=params.get("steepness", DEFAULT_STEEPNESS),
                 )
 
             # Re-normalize to ensure probabilities sum to exactly 1.0
@@ -354,21 +417,23 @@ def soft_classify(
         logger.error(f"Error in soft_classify: {e}")
         raise
 
+
 # =====================================================================
 # 4. THE UNIVERSAL ORCHESTRATOR
 # =====================================================================
 
+
 def process_area_in_chunks(
-        dsm_path: str,
-        dtm_path: str,
-        dates_paths: List[Dict[str, str]],
-        output_path: str,
-        model_path: str,
-        chunk_size: int = DEFAULT_CHUNK_SIZE,
-        buffer: int = DEFAULT_BUFFER,
-        stopping_chunk: Optional[int] = None,
-        mean_prob: bool = False,
-        spatial_activation: Optional[Dict[str, Dict[str, float]]] = None
+    dsm_path: str,
+    dtm_path: str,
+    dates_paths: list[dict[str, str]],
+    output_path: str,
+    model_path: str,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    buffer: int = DEFAULT_BUFFER,
+    stopping_chunk: int | None = None,
+    mean_prob: bool = False,
+    spatial_activation: dict[str, dict[str, float]] | None = None,
 ) -> None:
     """
     Orchestrates the windowed classification of an entire geographic area.
@@ -409,17 +474,29 @@ def process_area_in_chunks(
             # 4. DYNAMIC PROFILE SETUP
             if mean_prob:
                 # 3 bands (Canopy, Green, Neither), Float32
-                profile.update(count=3, dtype='float32', blockxsize=chunk_size, blockysize=chunk_size, tiled=True, nodata=0)
+                profile.update(
+                    count=3,
+                    dtype="float32",
+                    blockxsize=chunk_size,
+                    blockysize=chunk_size,
+                    tiled=True,
+                    nodata=0,
+                )
                 print("Mode: Soft Classification (Probability Maps)")
             else:
                 # 1 band, Uint8
-                profile.update(count=1, dtype='uint8', blockxsize=chunk_size, blockysize=chunk_size, tiled=True)
+                profile.update(
+                    count=1,
+                    dtype="uint8",
+                    blockxsize=chunk_size,
+                    blockysize=chunk_size,
+                    tiled=True,
+                )
                 print("Mode: Hard Classification")
 
             print(f"Creating output raster at {output_path}...")
 
-            with rasterio.open(output_path, 'w', **profile) as dst:
-
+            with rasterio.open(output_path, "w", **profile) as dst:
                 chunk_num = 0
 
                 # --- START CHUNKING LOOP ---
@@ -429,30 +506,49 @@ def process_area_in_chunks(
 
                         # 5. EARLY STOPPING CHECK
                         if stopping_chunk is not None and chunk_num > stopping_chunk:
-                            print(f"[{datetime.datetime.now()}] Stopping chunk limit ({stopping_chunk}) reached. "
-                                f"Terminating early.")
+                            print(
+                                f"[{datetime.datetime.now()}] Stopping chunk limit ({stopping_chunk}) reached. "
+                                f"Terminating early."
+                            )
                             return
 
                         # 6. DEFINE WINDOWS
-                        read_window = Window(x - buffer, y - buffer, chunk_size + (2 * buffer), chunk_size + (2 * buffer))
-                        write_window = Window(x, y, min(chunk_size, width - x), min(chunk_size, height - y))
+                        read_window = Window(
+                            x - buffer,
+                            y - buffer,
+                            chunk_size + (2 * buffer),
+                            chunk_size + (2 * buffer),
+                        )
+                        write_window = Window(
+                            x,
+                            y,
+                            min(chunk_size, width - x),
+                            min(chunk_size, height - y),
+                        )
 
                         print(f"Processing Chunk {chunk_num} | Window at X:{x}, Y:{y}")
 
                         # 7. GENERATE FEATURES
-                        static_height_dict = generate_static_height_features(dsm_path, dtm_path, read_window)
+                        static_height_dict = generate_static_height_features(
+                            dsm_path, dtm_path, read_window
+                        )
 
                         feature_matrices_by_date = []
                         for i, date_files in enumerate(dates_paths):
-                            spectral_dict = generate_temporal_spectral_features(date_files, read_window)
+                            spectral_dict = generate_temporal_spectral_features(
+                                date_files, read_window
+                            )
 
                             # Merge dictionaries and sort numerically to guarantee model feature order
                             full_chunk_dict = {**static_height_dict, **spectral_dict}
-                            ordered_keys = sorted(full_chunk_dict.keys(), key=lambda k: int(k[1:]))
+                            ordered_keys = sorted(
+                                full_chunk_dict.keys(), key=lambda k: int(k[1:])
+                            )
 
                             # Stack into a (pixels, 42) matrix
-                            X_date = np.column_stack([full_chunk_dict[k].flatten() for k in ordered_keys]).astype(
-                                np.float32)
+                            X_date = np.column_stack(
+                                [full_chunk_dict[k].flatten() for k in ordered_keys]
+                            ).astype(np.float32)
                             feature_matrices_by_date.append(X_date)
 
                         # 8. UNIFIED CLASSIFICATION ENGINE
@@ -462,22 +558,31 @@ def process_area_in_chunks(
                             height=read_window.height,
                             width=read_window.width,
                             mean_prob=mean_prob,
-                            spatial_activation_params=spatial_activation
+                            spatial_activation_params=spatial_activation,
                         )
 
                         # 9. CROP TO CLEAN AREA (Remove Buffer)
                         if mean_prob:
                             # Shape: (Bands, Height, Width)
-                            clean_output = chunk_output[:, buffer: buffer + write_window.height,
-                                        buffer: buffer + write_window.width]
+                            clean_output = chunk_output[
+                                :,
+                                buffer : buffer + write_window.height,
+                                buffer : buffer + write_window.width,
+                            ]
                             dst.write(clean_output, window=write_window)
                         else:
                             # Shape: (Height, Width)
-                            clean_output = chunk_output[buffer: buffer + write_window.height,
-                                        buffer: buffer + write_window.width]
-                            dst.write(clean_output.astype(np.uint8), 1, window=write_window)
+                            clean_output = chunk_output[
+                                buffer : buffer + write_window.height,
+                                buffer : buffer + write_window.width,
+                            ]
+                            dst.write(
+                                clean_output.astype(np.uint8), 1, window=write_window
+                            )
 
-                print(f"[{datetime.datetime.now()}] Westminster processing finalized successfully.")
+                print(
+                    f"[{datetime.datetime.now()}] Westminster processing finalized successfully."
+                )
     except Exception as e:
         logger.error(f"Error in process_area_in_chunks: {e}")
         raise
